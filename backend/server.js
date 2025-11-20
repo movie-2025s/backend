@@ -22,7 +22,7 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Movies route
+// Movies route (test data - can be removed later)
 app.get('/api/movies', (req, res) => {
   console.log('🎬 Movies route hit');
   const movies = [
@@ -34,8 +34,7 @@ app.get('/api/movies', (req, res) => {
       poster_url: "https://via.placeholder.com/300x450/333/666?text=Avengers",
       language: "en",
       duration: 143
-    },
-    // ... other test movies
+    }
   ];
   
   res.json(movies);
@@ -66,7 +65,7 @@ app.get('/api/tmdb/popular', async (req, res) => {
   }
 });
 
-// ✅ ADD THIS NEW ROUTE - Movie details by ID
+// ✅ MOVIE DETAILS BY ID - NEW ROUTE
 app.get('/api/tmdb/movie/:id', async (req, res) => {
   try {
     const movieId = req.params.id;
