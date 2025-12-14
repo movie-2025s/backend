@@ -1,6 +1,9 @@
 import { Router } from 'express';
 import pool from '../db/index.js';
 import { authenticate } from '../middleware/auth.js';
+import { PREMIUM_ADD_EUR } from '../db/setup.js';
+import { getSeatsForTheatre } from '../models/seat.js';
+import { getOccupiedSeatIds } from '../models/showtime.js';
 
 const router = Router();
 
@@ -51,12 +54,57 @@ router.get('/admin/bookings', authenticate, async (req, res) => {
 router.put('/admin/bookings/:id', authenticate, async (req, res) => {
   try {
     const id = req.params.id;
-    const { customer_name, customer_email, customer_phone } = req.body || {};
+    const { customer_name, customer_email, customer_phone, seats } = req.body || {};
+    
+    // Update customer info
     const { rowCount } = await pool.query(
       'UPDATE bookings SET customer_name=$1, customer_email=$2, customer_phone=$3 WHERE id=$4',
       [customer_name || null, customer_email || null, customer_phone || null, id]
     );
     if (!rowCount) return res.status(404).json({ message: 'Booking not found' });
+    
+    // If seats provided, update seats
+    if (seats && Array.isArray(seats)) {
+      // Get showtime_id and theatre_id from booking
+      const { rows: bookingRows } = await pool.query('SELECT showtime_id FROM bookings WHERE id=$1', [id]);
+      if (!bookingRows.length) return res.status(404).json({ message: 'Booking not found' });
+      const showtimeId = bookingRows[0].showtime_id;
+      
+      const { rows: showtimeRows } = await pool.query('SELECT theatre_id, base_price_eur FROM showtimes WHERE id=$1', [showtimeId]);
+      if (!showtimeRows.length) return res.status(404).json({ message: 'Showtime not found' });
+      const { theatre_id, base_price_eur } = showtimeRows[0];
+      
+      // Get seat types
+      const seatIds = seats.map(s => s.seat_id || s);
+      const { rows: seatRows } = await pool.query(
+        'SELECT seat_id, seat_type FROM seats WHERE theatre_id=$1 AND seat_id = ANY($2)',
+        [theatre_id, seatIds]
+      );
+      if (seatRows.length !== seatIds.length) return res.status(400).json({ message: 'Invalid seats' });
+      
+      let total = 0;
+      const pricedSeats = seatRows.map(seat => {
+        const isPremium = seat.seat_type === 'premium';
+        const price = Number(isPremium ? Number(base_price_eur) + PREMIUM_ADD_EUR : Number(base_price_eur));
+        total += price;
+        return { seat_id: seat.seat_id, price_eur: price };
+      });
+      
+      // Delete old seats
+      await pool.query('DELETE FROM booking_seats WHERE booking_id=$1', [id]);
+      
+      // Insert new seats
+      for (const s of pricedSeats) {
+        await pool.query(
+          'INSERT INTO booking_seats (booking_id, showtime_id, theatre_id, seat_id, price_eur) VALUES ($1,$2,$3,$4,$5)',
+          [id, showtimeId, theatre_id, s.seat_id, s.price_eur]
+        );
+      }
+      
+      // Update total
+      await pool.query('UPDATE bookings SET total_amount=$1 WHERE id=$2', [total.toFixed(2), id]);
+    }
+    
     res.json({ message: 'Booking updated' });
   } catch (e) {
     console.error('Admin booking update error', e);
@@ -178,6 +226,33 @@ router.put('/admin/bookings/:id/showtime', authenticate, async (req, res) => {
   } catch (e) {
     console.error('Admin booking showtime change error', e);
     res.status(500).json({ message: 'Failed to change booking showtime' });
+  }
+});
+
+// Get available seats for a booking's showtime (including current seats)
+router.get('/admin/bookings/:id/available-seats', authenticate, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const { rows: bookingRows } = await pool.query('SELECT showtime_id FROM bookings WHERE id=$1', [id]);
+    if (!bookingRows.length) return res.status(404).json({ message: 'Booking not found' });
+    const showtimeId = bookingRows[0].showtime_id;
+    
+    const { rows: showtimeRows } = await pool.query('SELECT theatre_id FROM showtimes WHERE id=$1', [showtimeId]);
+    if (!showtimeRows.length) return res.status(404).json({ message: 'Showtime not found' });
+    const theatreId = showtimeRows[0].theatre_id;
+    
+    const seatRows = await getSeatsForTheatre(theatreId);
+    const occupiedIds = await getOccupiedSeatIds(showtimeId, seatRows.map(r => r.seat_id));
+    // Remove current booking's seats from occupied
+    const currentSeats = await pool.query('SELECT seat_id FROM booking_seats WHERE booking_id=$1', [id]);
+    const currentSeatIds = currentSeats.rows.map(r => r.seat_id);
+    const occ = new Set(occupiedIds.filter(seatId => !currentSeatIds.includes(seatId)));
+    
+    const available = seatRows.filter(seat => !occ.has(seat.seat_id) || currentSeatIds.includes(seat.seat_id));
+    res.json(available);
+  } catch (e) {
+    console.error('Admin available seats error', e);
+    res.status(500).json({ message: 'Failed to load available seats' });
   }
 });
 
