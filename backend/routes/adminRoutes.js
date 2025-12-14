@@ -118,7 +118,6 @@ router.put('/admin/theatres/:theatreId/seats/:seatId', authenticate, async (req,
   }
 });
 
-// Change a single booking's showtime by date/time (ISO) for a specific user/booking
 // Does not modify other bookings or global showtime data except creating a new showtime if needed.
 router.put('/admin/bookings/:id/showtime', authenticate, async (req, res) => {
   try {

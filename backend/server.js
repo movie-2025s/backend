@@ -21,19 +21,9 @@ app.use('/api', bookingRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api', adminRoutes);
 
-// Health check
-app.get('/api/health', (req, res) => {
-  console.log('✅ Health check hit');
-  res.json({
-    message: 'Server is running!',
-    timestamp: new Date().toISOString(),
-    port: PORT
-  });
-});
 
-// Movies route (test data - can be removed later)
+// Movies route 
 app.get('/api/movies', (req, res) => {
-  console.log('🎬 Movies route hit');
   const movies = [
     {
       id: 1,
@@ -52,7 +42,6 @@ app.get('/api/movies', (req, res) => {
 // TMDB popular movies
 app.get('/api/tmdb/popular', async (req, res) => {
   try {
-    console.log('🌟 TMDB Popular route hit');
     const response = await fetch(`https://api.themoviedb.org/3/movie/popular?api_key=d88a1a232de1cf854775d0306a306741`);
     const data = await response.json();
 
@@ -69,16 +58,15 @@ app.get('/api/tmdb/popular', async (req, res) => {
 
     res.json(moviesWithPosters);
   } catch (error) {
-    console.error('❌ TMDB Error:', error);
+    console.error(' TMDB Error:', error);
     res.status(500).json({ message: 'Error fetching from TMDB' });
   }
 });
 
-// ✅ MOVIE DETAILS BY ID - NEW ROUTE
+// MOVIE DETAILS BY ID - NEW ROUTE
 app.get('/api/tmdb/movie/:id', async (req, res) => {
   try {
     const movieId = req.params.id;
-    console.log('🎬 Fetching movie details for ID:', movieId);
 
     const response = await fetch(
       `https://api.themoviedb.org/3/movie/${movieId}?api_key=d88a1a232de1cf854775d0306a306741`
@@ -87,13 +75,10 @@ app.get('/api/tmdb/movie/:id', async (req, res) => {
     if (!response.ok) {
       return res.status(404).json({ message: 'Movie not found on TMDB' });
     }
-
     const movieData = await response.json();
-    console.log('✅ Movie details fetched successfully:', movieData.title);
 
     res.json(movieData);
   } catch (error) {
-    console.error('❌ Movie details error:', error);
     res.status(500).json({ message: 'Error fetching movie details from TMDB' });
   }
 });
@@ -102,8 +87,6 @@ app.get('/api/tmdb/movie/:id', async (req, res) => {
 app.get('/api/search/movies', async (req, res) => {
   try {
     const query = req.query.q || '';
-    console.log('🔍 Search route hit:', query);
-
     if (!query) {
       return res.status(400).json({ message: 'Search query required' });
     }
@@ -124,7 +107,6 @@ app.get('/api/search/movies', async (req, res) => {
 
     res.json(moviesWithPosters);
   } catch (error) {
-    console.error('❌ Search Error:', error);
     res.status(500).json({ message: 'Search failed' });
   }
 });
